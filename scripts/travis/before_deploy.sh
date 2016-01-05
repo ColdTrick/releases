@@ -1,17 +1,29 @@
 #!/usr/bin/env sh
 
-# remove composer dev dependencies
+echo "Preparing release"
+# Go down one directory
+cd ..
+# Create a new temp directory
+mkdir zip_temp
+# Enter the directory
+cd zip_temp
+# Copy the plugin to the new temp location
+echo "Copying plugin to temp location"
+cp -a ../$PROJECTNAME ./
+# Enter the plugin directory
+cd $PROJECTNAME
+# Remove Composer development dependencies
 echo "Removing Composer development dependencies"
 composer install --no-dev
-
-# start creating the zip file
-echo "Creating zip"
-# go down one directory
+# Go to the temp dir
 cd ..
-# create zip with some excluded paths
-zip -r $PROJECTNAME/${PROJECTNAME}_${TRAVIS_TAG}.zip $PROJECTNAME -x $PROJECTNAME/.git/**\* $PROJECTNAME/.git/ $PROJECTNAME/**/.git/**\* $PROJECTNAME/**/.git/ $PROJECTNAME/vendor/coldtrick/releases/**\* $PROJECTNAME/vendor/coldtrick/releases/ > /dev/null
-# return to the main directory for the next step
+# Create the zip file
+echo "Creating zip-file"
+zip -r ../$PROJECTNAME/${PROJECTNAME}_${TRAVIS_TAG}.zip $PROJECTNAME -x $PROJECTNAME/.git/**\* $PROJECTNAME/.git/ $PROJECTNAME/**/.git/**\* $PROJECTNAME/**/.git/ > /dev/null
+# Some cleanup actions
+echo "Cleaning up"
+cd ..
+rm -rf zip_temp
+# Go back to original location
 cd $PROJECTNAME
-
-# done
-echo "Done with preprocessing"
+echo "Done with preparations"
