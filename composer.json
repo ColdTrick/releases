@@ -1,0 +1,10 @@
+{
+	"name": "coldtrick/releases",
+	"description": "A set of scripts needed for building releases",
+	"keywords": ["ci", "travis", "release"],
+	"license": "GPL-2.0",
+	"support": {
+		"source": "https://github.com/ColdTrick/releases",
+		"issues": "https://github.com/ColdTrick/releases/issues"
+	}
+}
