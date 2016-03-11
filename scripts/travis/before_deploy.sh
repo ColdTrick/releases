@@ -14,7 +14,7 @@ cp -a ../$PROJECTNAME ./
 cd $PROJECTNAME
 # Remove Composer development dependencies
 echo "Removing Composer development dependencies"
-composer install --no-dev
+composer install --no-dev --ignore-platform-reqs
 # Go to the temp dir
 cd ..
 # Create the zip file
