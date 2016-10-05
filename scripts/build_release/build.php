@@ -1,0 +1,275 @@
+<?php
+
+// REMINDER; git ssh config keys: setx HOME c:\Users\admin\ on the command line.
+
+// line endings: git config --global core.autocrlf true
+
+// setting global ignore: git config --global core.excludesfile ~/.gitignore_global
+
+// git config --global user.email "you@example.com"
+// git config --global user.name "Your Name"
+
+// non master releases
+// git branch --set-upstream-to=origin/<branch> <local branch>
+
+$current_path = getcwd();
+$folders = explode('\\', $current_path);
+$reponame = get_repo_name();
+
+// check repo
+if (empty($reponame)) {
+	lpr('No reponame found. Going for a walk... Bye bye!', true);
+}
+if (strtolower(ask("Assuming plugin '$reponame' is being released. Is this correct? Y/N")) !== 'y') {
+	lpr('Goodbye', true);
+}
+
+$configname = ask('What is the config file to be used?');
+if (empty($configname) || !file_exists(dirname(__FILE__) . '/github_token/' . $configname)) {
+	lpr('Missing user config file in: ' . dirname(__FILE__) . '/github_token/', true);
+}
+$user_token = file_get_contents(dirname(__FILE__) . '/github_token/' . $configname);
+if (empty($user_token)) {
+	lpr('No user token found in : ' . dirname(__FILE__) . '/github_token/' . $configname, true);
+}
+lpr('');
+
+// git pull latest version
+$output = shell_exec('git pull');
+if ($output === null) {
+	lpr('Failure detected. Exitting', true);
+}
+
+// check if up to date
+if (trim($output) !== 'Already up-to-date.') {
+	lpr('Local branch is not up to date. Exitting.', true);
+}
+
+// check for local changes
+$status = shell_exec('git status --porcelain');
+if (!empty($status)) {
+	lpr('Detected changes. Commit those before building release. Exitting.', true);
+}
+
+// detect latest tag
+$previous_tag = shell_exec('git describe --tags --abbrev^=0');
+lpr(trim($previous_tag) . ' is the latest tag used to generate the release notes.');
+lpr('');
+
+// generate release notes
+$release_notes = generate_release_notes($previous_tag);
+if (empty($release_notes)) {
+	lpr('No release notes, so assuming no release is needed. Exitting.', true);
+}
+
+lpr('release notes:');
+lpr(implode('', $release_notes));
+
+$new_version = ltrim(ask('What is the new tag?'), 'vV');
+if (empty($new_version)) {
+	lpr('Missing new version number', true);
+}
+lpr('', true);
+
+// check for existence of CHANGES.txt
+$changes_file = $current_path . '\CHANGES.txt';
+
+if (!file_exists($changes_file)) {
+	file_put_contents($changes_file, 'Version history' . PHP_EOL . '===============' . PHP_EOL);
+	// add the new file to git
+	shell_exec("git add CHANGES.txt");
+}
+
+$changes_content = file($changes_file);
+
+if (!isset($changes_content[0]) || trim($changes_content[0]) !== 'Version history') {
+	lpr('Did not find the text "Version history" on the first line in the file: ' . $changes_file, true);
+}
+
+if (!isset($changes_content[1]) || trim($changes_content[1]) !== '===============') {
+	lpr('Did not find the text "===============" on the second line in the file: ' . $changes_file, true);
+}
+
+// check manifest
+$manifest_file = $current_path . '\manifest.xml';
+if (!file_exists($changes_file)) {
+	lpr("No manifest file found at: $manifest_file; Exitting.", true);
+}
+
+$manifest_contents = file($manifest_file);
+$version_updated = false;
+foreach ($manifest_contents as $key => $line) {
+	$version_pattern = '/<version>\S+<\/version>/';
+	if (preg_match($version_pattern, $line)) {
+		$manifest_contents[$key] = preg_replace($version_pattern, "<version>{$new_version}</version>", $line);
+		$version_updated = true;
+		break;
+	}
+	
+	if (preg_match('/<license>\S+<\/license>/', $line)) {
+		// we now found the license tag, but still no version
+		// giving up!
+		lpr("Could not find <version> element in the manifest file at an expected location. Exitting.", true);
+	}
+}
+
+if ($version_updated === false) {
+	lpr("Read the whole manifest file, but found no version element to update. Exitting.", true);
+}
+
+// update manifest
+file_put_contents($manifest_file, implode('', $manifest_contents));
+
+// update CHANGES.txt
+$date = date('Y-m-d');
+
+$header = [];
+
+$header[] = array_shift($changes_content); //remove line 1
+$header[] = array_shift($changes_content); //remove line 2
+$header[] = PHP_EOL;
+$header[] = "{$new_version} ({$date}):" . PHP_EOL . PHP_EOL;
+
+$new_array = array_merge($header, $release_notes, $changes_content);
+
+file_put_contents($changes_file, implode('', $new_array));
+
+lpr('Release notes and the manifest have been updated. You can manually check the output if needed.');
+ask('Press ENTER to continue.');
+
+// do all validation and ask for a confirm
+lpr('Starting Release');
+
+// commit new version
+$commit_message = "chore: wrapping up v{$new_version}";
+shell_exec("git commit -m \"{$commit_message}\" manifest.xml CHANGES.txt");
+
+// create new tag for version
+shell_exec("git tag -m \"Version {$new_version}\" v{$new_version}");
+
+// push to github.com
+shell_exec("git push origin HEAD --tags");
+
+// update release text on github.com release
+lpr('Creating release on GitHub');
+
+// give github some time to have the new tag available
+sleep(20);
+
+$url = "https://api.github.com/repos/{$reponame}/releases";
+$vars = [
+	"tag_name" => "v{$new_version}",
+	"name" => "v{$new_version}",
+	"body" => implode('', $release_notes),
+	"draft" => false,
+	"prerelease" => false,
+];
+
+$ch = curl_init($url);
+
+curl_setopt($ch, CURLOPT_HTTPHEADER, [
+	"Authorization: token {$user_token}",
+	"User-Agent: $configname",
+]);
+
+curl_setopt($ch, CURLOPT_POST, true);
+curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($vars));
+curl_setopt($ch, CURLOPT_FOLLOWLOCATION, 1);
+curl_setopt($ch, CURLOPT_HEADER, false);
+curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+
+$response = curl_exec($ch);
+curl_close($ch);
+
+lpr('Finished Release', true);
+
+/**
+ * Helper functions
+ */
+
+/**
+ * Print a line
+ *
+ * @param string $string the string to print
+ * @param bool   $exit   exit the script after print (default: false)
+ *
+ * @return void
+ */
+function lpr($string, $exit = false) {
+	echo $string;
+	
+	if ($exit) {
+		exit();
+	}
+	
+	echo PHP_EOL;
+}
+
+/**
+ * Ask a question to the user
+ *
+ * @param string $question the question to ask
+ *
+ * @return string
+ */
+function ask($question) {
+	lpr($question);
+	return trim(fgets(STDIN));
+}
+
+/**
+ * Generate release notes from github commits
+ *
+ * @param string $latest_tag the tag to get the commits after that
+ *
+ * @return false|string[]
+ */
+function generate_release_notes($latest_tag) {
+	$latest_tag = trim($latest_tag);
+	if (!empty($latest_tag)) {
+		$latest_tag = "{$latest_tag}..HEAD ";
+	}
+	
+	$command = "git log {$latest_tag}--format=format:\"%s\" --no-decorate --no-merges";
+
+	$log = trim(shell_exec($command));
+	if (empty($log)) {
+		return false;
+	}
+	
+	$commit_lines = preg_split("/\\r\\n|\\r|\\n/", $log);
+	
+	$output = [];
+	foreach ($commit_lines as $key => $line) {
+		$line = trim($line);
+		if (strpos($line, 'chore') === 0) {
+			continue;
+		}
+		
+		$output[] = "- $line" . PHP_EOL;
+	}
+	natcasesort($output);
+
+	return $output;
+}
+
+/**
+ * Get the github repo name currently working on
+ *
+ * @return false|string
+ */
+function get_repo_name () {
+	$regex = '/\\s*Fetch URL:.*[:\\/]([\\w]*\\/[\\w]*)\\.git$/m';
+	
+	$command = "git remote show origin";
+
+	$info = trim(shell_exec($command));
+	preg_match($regex, $info, $matches);
+	if (isset($matches[1])) {
+		return $matches[1];
+	} else {
+		lpr($info);
+		return false;
+	}
+}
