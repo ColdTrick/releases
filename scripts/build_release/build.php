@@ -69,7 +69,7 @@ $new_version = ltrim(ask('What is the new tag?'), 'vV');
 if (empty($new_version)) {
 	lpr('Missing new version number', true);
 }
-lpr('', true);
+lpr('');
 
 // check for existence of CHANGES.txt
 $changes_file = $current_path . '\CHANGES.txt';
