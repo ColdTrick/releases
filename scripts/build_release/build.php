@@ -54,15 +54,37 @@ if (!empty($status)) {
 // detect latest tag
 $previous_tag = shell_exec('git describe --tags --abbrev^=0');
 lpr(trim($previous_tag) . ' is the latest tag used to generate the release notes.');
-lpr('');
 
 // generate release notes
-$release_notes = generate_release_notes($previous_tag);
-if (empty($release_notes)) {
+$release = generate_release_notes($previous_tag);
+if (empty($release)) {
+	lpr('');
 	lpr('No release notes, so assuming no release is needed. Exitting.', true);
 }
 
-lpr('release notes:');
+// present commit counter
+$release_counter = $release['counter'];
+$commit_counter = 'Commmit counter:';
+foreach ($release_counter as $type => $count) {
+	if (empty($count)) {
+		continue;
+	}
+	$commit_counter .= " $type: {$count}";
+}
+lpr($commit_counter);
+lpr('');
+
+$release_notes = $release['notes'];
+if (empty($release_notes)) {
+	if (strtolower(ask('Looks like only chores are in this release, still release? Y/N')) !== 'y') {
+		lpr('OK stopping, bye!', true);
+	}
+	
+	lpr('');
+	$release_notes[] = '- several small chores/fixes' . PHP_EOL;
+}
+
+lpr('Release notes:');
 lpr(implode('', $release_notes));
 
 $new_version = ltrim(ask('What is the new tag?'), 'vV');
@@ -231,6 +253,15 @@ function generate_release_notes($latest_tag) {
 		$latest_tag = "{$latest_tag}..HEAD ";
 	}
 	
+	$counter = [
+		'added' => 0,
+		'changed' => 0,
+		'fixed' => 0,
+		'removed' => 0,
+		'chore' => 0,
+		'misc' => 0,
+	];
+	
 	$command = "git log {$latest_tag}--format=format:\"%s\" --no-decorate --no-merges";
 
 	$log = trim(shell_exec($command));
@@ -243,15 +274,29 @@ function generate_release_notes($latest_tag) {
 	$output = [];
 	foreach ($commit_lines as $key => $line) {
 		$line = trim($line);
-		if (strpos($line, 'chore') === 0) {
+		if (stripos($line, 'chore') === 0) {
+			$counter['chore']++;
 			continue;
+		} elseif (stripos($line, 'add') === 0) {
+			$counter['added']++;
+		} elseif (stripos($line, 'change') === 0) {
+			$counter['changed']++;
+		} elseif (stripos($line, 'fix') === 0) {
+			$counter['fixed']++;
+		} elseif (stripos($line, 'remove') === 0) {
+			$counter['removed']++;
+		} else {
+			$counter['misc']++;
 		}
 		
 		$output[] = "- $line" . PHP_EOL;
 	}
 	natcasesort($output);
 
-	return $output;
+	return [
+		'notes' => $output,
+		'counter' => $counter,
+	];
 }
 
 /**
