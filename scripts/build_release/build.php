@@ -114,7 +114,7 @@ if (!isset($changes_content[1]) || trim($changes_content[1]) !== '==============
 
 // check manifest
 $manifest_file = $current_path . '\manifest.xml';
-if (!file_exists($changes_file)) {
+if (!file_exists($manifest_file)) {
 	lpr("No manifest file found at: $manifest_file; Exitting.", true);
 }
 
