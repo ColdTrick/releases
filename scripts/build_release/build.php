@@ -114,33 +114,40 @@ if (!isset($changes_content[1]) || trim($changes_content[1]) !== '==============
 
 // check manifest
 $manifest_file = $current_path . '\manifest.xml';
+$manifest_found = true;
 if (!file_exists($manifest_file)) {
-	lpr("No manifest file found at: $manifest_file; Exitting.", true);
+	$manifest_found = false;
+	if (strtolower(ask("No manifest file found at: {$manifest_file}. Continue anyway? Y/N")) !== 'y') {
+		lpr("Exitting", true);
+	}
 }
 
-$manifest_contents = file($manifest_file);
-$version_updated = false;
-foreach ($manifest_contents as $key => $line) {
-	$version_pattern = '/<version>\S+<\/version>/';
-	if (preg_match($version_pattern, $line)) {
-		$manifest_contents[$key] = preg_replace($version_pattern, "<version>{$new_version}</version>", $line);
-		$version_updated = true;
-		break;
+if ($manifest_found) {
+	$manifest_contents = file($manifest_file);
+	$version_updated = false;
+	foreach ($manifest_contents as $key => $line) {
+		$version_pattern = '/<version>\S+<\/version>/';
+		if (preg_match($version_pattern, $line)) {
+			$manifest_contents[$key] = preg_replace($version_pattern, "<version>{$new_version}</version>", $line);
+			$version_updated = true;
+			break;
+		}
+		
+		if (preg_match('/<license>\S+<\/license>/', $line)) {
+			// we now found the license tag, but still no version
+			// giving up!
+			lpr("Could not find <version> element in the manifest file at an expected location. Exitting.", true);
+		}
 	}
 	
-	if (preg_match('/<license>\S+<\/license>/', $line)) {
-		// we now found the license tag, but still no version
-		// giving up!
-		lpr("Could not find <version> element in the manifest file at an expected location. Exitting.", true);
+	if ($version_updated === false) {
+		lpr("Read the whole manifest file, but found no version element to update. Exitting.", true);
 	}
+	
+	// update manifest
+	file_put_contents($manifest_file, implode('', $manifest_contents));
+	shell_exec("git add {$manifest_file}");
 }
-
-if ($version_updated === false) {
-	lpr("Read the whole manifest file, but found no version element to update. Exitting.", true);
-}
-
-// update manifest
-file_put_contents($manifest_file, implode('', $manifest_contents));
 
 // update CHANGES.txt
 $date = date('Y-m-d');
@@ -155,6 +162,7 @@ $header[] = "{$new_version} ({$date}):" . PHP_EOL . PHP_EOL;
 $new_array = array_merge($header, $release_notes, $changes_content);
 
 file_put_contents($changes_file, implode('', $new_array));
+shell_exec("git add CHANGES.txt");
 
 lpr('Release notes and the manifest have been updated. You can manually check the output if needed.');
 ask('Press ENTER to continue.');
@@ -164,7 +172,7 @@ lpr('Starting Release');
 
 // commit new version
 $commit_message = "chore: wrapping up v{$new_version}";
-shell_exec("git commit -m \"{$commit_message}\" manifest.xml CHANGES.txt");
+shell_exec("git commit -m \"{$commit_message}\"");
 
 // create new tag for version
 shell_exec("git tag -m \"Version {$new_version}\" v{$new_version}");
