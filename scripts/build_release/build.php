@@ -24,13 +24,10 @@ if (strtolower(ask("Assuming plugin '$reponame' is being released. Is this corre
 	lpr('Goodbye', true);
 }
 
-$configname = ask('What is the config file to be used?');
-if (empty($configname) || !file_exists(dirname(__FILE__) . '/github_token/' . $configname)) {
-	lpr('Missing user config file in: ' . dirname(__FILE__) . '/github_token/', true);
-}
-$user_token = file_get_contents(dirname(__FILE__) . '/github_token/' . $configname);
+// get Github api token
+$user_token = get_github_token();
 if (empty($user_token)) {
-	lpr('No user token found in : ' . dirname(__FILE__) . '/github_token/' . $configname, true);
+	lpr('', true);
 }
 lpr('');
 
@@ -312,7 +309,7 @@ function generate_release_notes($latest_tag) {
  *
  * @return false|string
  */
-function get_repo_name () {
+function get_repo_name() {
 	$regex = '/\\s*Fetch URL:.*[:\\/]([\\w]*\\/[\\w]*)\\.git$/m';
 	
 	$command = "git remote show origin";
@@ -325,4 +322,59 @@ function get_repo_name () {
 		lpr($info);
 		return false;
 	}
+}
+
+/**
+ * Get the Github api token
+ *
+ * @return fasle|string
+ */
+function get_github_token() {
+	
+	$files = get_github_token_files();
+	if (empty($files)) {
+		return false;
+	}
+	
+	$filename = false;
+	if (count($files) === 1) {
+		$filename = $files[0];
+	} else {
+		$configname = ask('What is the config file to be used?');
+		if (empty($configname) || !in_array($configname, $files)) {
+			lpr('Missing user config file in: ' . dirname(__FILE__) . '/github_token/', true);
+			return false;
+		}
+		
+		$filename = $configname;
+	}
+	
+	$content = file_get_contents(dirname(__FILE__) . '/github_token/' . $filename);
+	if (empty($content)) {
+		lpr('No user token found in: ' . dirname(__FILE__) . '/github_token/' . $filename, true);
+		return false;
+	}
+	
+	return $content;
+}
+
+/**
+ * Get all available Github token files
+ *
+ * @return string[]
+ */
+function get_github_token_files() {
+	
+	$di = new DirectoryIterator(dirname(__FILE__) . '/github_token/');
+	$files = [];
+	/* @var $fileInfo SplFileInfo */
+	foreach ($di as $fileInfo) {
+		if (!$fileInfo->isFile()) {
+			continue;
+		}
+		
+		$files[] = $fileInfo->getBasename();
+	}
+	
+	return $files;
 }
