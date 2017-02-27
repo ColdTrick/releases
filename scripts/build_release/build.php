@@ -158,11 +158,15 @@ $header[] = "{$new_version} ({$date}):" . PHP_EOL . PHP_EOL;
 
 $new_array = array_merge($header, $release_notes, $changes_content);
 
+// write new content
 file_put_contents($changes_file, implode('', $new_array));
-shell_exec("git add CHANGES.txt");
 
+// ask for last minute changes
 lpr('Release notes and the manifest have been updated. You can manually check the output if needed.');
 ask('Press ENTER to continue.');
+
+// add file to git commit
+shell_exec("git add CHANGES.txt");
 
 // do all validation and ask for a confirm
 lpr('Starting Release');
@@ -196,7 +200,7 @@ $ch = curl_init($url);
 
 curl_setopt($ch, CURLOPT_HTTPHEADER, [
 	"Authorization: token {$user_token}",
-	"User-Agent: $configname",
+	"User-Agent: PHP v" . phpversion(),
 ]);
 
 curl_setopt($ch, CURLOPT_POST, true);
