@@ -185,7 +185,11 @@ shell_exec("git push origin HEAD --tags");
 lpr('Creating release on GitHub');
 
 // give github some time to have the new tag available
-sleep(20);
+for ($i = 0; $i < 20; $i++) {
+	echo '.';
+	sleep(1);
+}
+lpr('.');
 
 $url = "https://api.github.com/repos/{$reponame}/releases";
 $vars = [
@@ -331,7 +335,7 @@ function get_repo_name() {
 /**
  * Get the Github api token
  *
- * @return fasle|string
+ * @return false|string
  */
 function get_github_token() {
 	
