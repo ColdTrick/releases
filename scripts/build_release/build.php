@@ -38,7 +38,7 @@ if ($output === null) {
 }
 
 // check if up to date
-if (trim($output) !== 'Already up-to-date.') {
+if (trim($output) !== 'Already up to date.') {
 	lpr('Local branch is not up to date. Exitting.', true);
 }
 
