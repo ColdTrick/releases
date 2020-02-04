@@ -29,6 +29,12 @@ $user_token = get_github_token();
 if (empty($user_token)) {
 	lpr('', true);
 }
+
+// get Github username
+$username = get_github_username();
+if (empty($username)) {
+	lpr('', true);
+}
 lpr('');
 
 // git pull latest version
@@ -203,10 +209,10 @@ $vars = [
 $ch = curl_init($url);
 
 curl_setopt($ch, CURLOPT_HTTPHEADER, [
-	"Authorization: token {$user_token}",
 	"User-Agent: PHP v" . phpversion(),
 ]);
 
+curl_setopt($ch, CURLOPT_USERPWD, "{$username}:{$user_token}");
 curl_setopt($ch, CURLOPT_POST, true);
 curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($vars));
 curl_setopt($ch, CURLOPT_FOLLOWLOCATION, 1);
@@ -385,4 +391,29 @@ function get_github_token_files() {
 	}
 	
 	return $files;
+}
+
+/**
+ * Get the Github api username
+ *
+ * @return false|string
+ */
+function get_github_username() {
+	
+	$files = get_github_token_files();
+	if (empty($files)) {
+		return false;
+	}
+	
+	if (count($files) === 1) {
+		return $files[0];
+	}
+	
+	$username = ask('What Github username to use?');
+	if (empty($username)) {
+		lpr('No Github username provided!', true);
+		return false;
+	}
+	
+	return $username;
 }
