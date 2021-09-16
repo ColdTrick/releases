@@ -27,13 +27,13 @@ if (strtolower(ask("Assuming plugin '$reponame' is being released. Is this corre
 // get Github api token
 $user_token = get_github_token();
 if (empty($user_token)) {
-	lpr('', true);
+	lpr('No tokens found', true);
 }
 
 // get Github username
 $username = get_github_username();
 if (empty($username)) {
-	lpr('', true);
+	lpr('No username found', true);
 }
 lpr('');
 
@@ -44,7 +44,7 @@ if ($output === null) {
 }
 
 // check if up to date
-if (trim($output) !== 'Already up to date.') {
+if (trim($output) !== 'Already up to date.' && trim($output) !== 'Already up-to-date.') {
 	lpr('Local branch is not up to date. Exitting.', true);
 }
 
@@ -117,39 +117,19 @@ if (!isset($changes_content[1]) || trim($changes_content[1]) !== '==============
 
 // check manifest
 $manifest_file = $current_path . '\manifest.xml';
-$manifest_found = true;
-if (!file_exists($manifest_file)) {
-	$manifest_found = false;
-	if (strtolower(ask("No manifest file found at: {$manifest_file}. Continue anyway? Y/N")) !== 'y') {
-		lpr("Exitting", true);
-	}
+$manifest_found = file_exists($manifest_file);
+$elgg_plugin_file = $current_path . '\elgg-plugin.php';
+$elgg_plugin_found = file_exists($elgg_plugin_file);
+if (!$manifest_found && !$elgg_plugin_found) {
+	lpr("No manifest or elgg-plugin file found. Exitting", true);
 }
 
 if ($manifest_found) {
-	$manifest_contents = file($manifest_file);
-	$version_updated = false;
-	foreach ($manifest_contents as $key => $line) {
-		$version_pattern = '/<version>\S+<\/version>/';
-		if (preg_match($version_pattern, $line)) {
-			$manifest_contents[$key] = preg_replace($version_pattern, "<version>{$new_version}</version>", $line);
-			$version_updated = true;
-			break;
-		}
-		
-		if (preg_match('/<license>\S+<\/license>/', $line)) {
-			// we now found the license tag, but still no version
-			// giving up!
-			lpr("Could not find <version> element in the manifest file at an expected location. Exitting.", true);
-		}
-	}
-	
-	if ($version_updated === false) {
-		lpr("Read the whole manifest file, but found no version element to update. Exitting.", true);
-	}
-	
-	// update manifest
-	file_put_contents($manifest_file, implode('', $manifest_contents));
-	shell_exec("git add {$manifest_file}");
+	update_manifest_file($manifest_file, $new_version);
+}
+
+if ($elgg_plugin_found) {
+	update_elgg_plugin_file($elgg_plugin_file, $new_version);
 }
 
 // update CHANGES.txt
@@ -168,7 +148,7 @@ $new_array = array_merge($header, $release_notes, $changes_content);
 file_put_contents($changes_file, implode('', $new_array));
 
 // ask for last minute changes
-lpr('Release notes and the manifest have been updated. You can manually check the output if needed.');
+lpr('Release notes and the manifest or elgg-plugin have been updated. You can manually check the output if needed.');
 ask('Press ENTER to continue.');
 
 // add file to git commit
@@ -383,7 +363,7 @@ function get_github_token_files() {
 	$files = [];
 	/* @var $fileInfo SplFileInfo */
 	foreach ($di as $fileInfo) {
-		if (!$fileInfo->isFile()) {
+		if (!$fileInfo->isFile() || $fileInfo->getBasename() === 'readme.md') {
 			continue;
 		}
 		
@@ -416,4 +396,72 @@ function get_github_username() {
 	}
 	
 	return $username;
+}
+
+/**
+ * Updates version in the manifest file
+ *
+ * @param string $manifest_file
+ * @param string $new_version
+ */
+function update_manifest_file($manifest_file, $new_version) {
+	$contents = file($manifest_file);
+	$version_updated = false;
+	foreach ($contents as $key => $line) {
+		$version_pattern = '/<version>\S+<\/version>/';
+		if (preg_match($version_pattern, $line)) {
+			$contents[$key] = preg_replace($version_pattern, "<version>{$new_version}</version>", $line);
+			$version_updated = true;
+			break;
+		}
+		
+		if (preg_match('/<license>\S+<\/license>/', $line)) {
+			// we now found the license tag, but still no version
+			// giving up!
+			lpr("Could not find <version> element in the manifest file at an expected location. Exitting.", true);
+		}
+	}
+	
+	if ($version_updated === false) {
+		lpr("Read the whole manifest file, but found no version element to update. Exitting.", true);
+	}
+	
+	// update manifest
+	file_put_contents($manifest_file, implode('', $contents));
+	shell_exec("git add {$manifest_file}");
+}
+
+/**
+ * Updates version in the elgg-plugin file
+ *
+ * @param string $elgg_plugin_file
+ * @param string $new_version
+ */
+function update_elgg_plugin_file($elgg_plugin_file, $new_version) {
+	$old_contents = file($elgg_plugin_file);
+	
+	$plugin_config = include($elgg_plugin_file);
+	if (!isset($plugin_config['plugin']['version'])) {
+		lpr('Could not find plugin version in elgg-plugin. Can\'t update.', true);
+	}
+	
+	$current_version = $plugin_config['plugin']['version'];
+	$version_pattern = '/(?<=[\'\"]version[\'\"] => [\'\"])(' . preg_quote($current_version) . ')(?=[\'\"])/';
+	$new_contents = preg_replace($version_pattern, $new_version, $old_contents);
+	
+	if ($new_contents === null || $new_contents === $old_contents) {
+		lpr('Something went wrong replacing version number in elgg-plugin.php', true);
+	}
+	
+	// write file
+	file_put_contents($elgg_plugin_file, $new_contents);
+	$new_plugin_config = include($elgg_plugin_file);
+	
+	if ($new_plugin_config['plugin']['version'] !== $new_version) {
+		// restore old contents
+		file_put_contents($elgg_plugin_file, $old_contents);
+		lpr('Could not find new plugin version number in elgg-plugin.php. Maybe multiple version lines available in file?', true);
+	}
+	
+	shell_exec("git add {$elgg_plugin_file}");
 }
