@@ -262,8 +262,9 @@ function generate_release_notes($latest_tag) {
 	];
 	
 	$command = "git log {$latest_tag}--format=format:\"%s\" --no-decorate --no-merges";
-
-	$log = trim(shell_exec($command));
+	
+	$log = shell_exec($command) ?: '';
+	$log = trim($log);
 	if (empty($log)) {
 		return false;
 	}
